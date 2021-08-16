@@ -96,28 +96,21 @@ open class Generator(private val option: Option) {
         }
         val def = ArrayList<ColumnDefinition>()
         fields.forEach { field ->
-            val o = override?.value?.find { it.name == field.name  }
-            def.addAll(columnDefinition(field, o?.column))
+            val embedded = field.isAnnotationPresent(Embedded::class.java)
+            if(embedded) {
+                def.addAll(allDefinitions(field.type, field.getAnnotation(AttributeOverrides::class.java)))
+            } else {
+                val theOverride = override?.value?.find { it.name == field.name  }?.column
+                val columnAnno = theOverride?: field.getAnnotation(Column::class.java)
+                val name = columnAnno?.name ?: option.defaultColumnName(field)
+                val nullable = columnAnno?.nullable ?: !field.type.isPrimitive
+                val defStr = columnAnno?.columnDefinition ?: definitionFromType(field)
+                def.add(ColumnDefinition(name, nullable, defStr))
+            }
         }
         return def
     }
-    private fun columnDefinition(f: Field, override: Column?): List<ColumnDefinition> {
-        val list = ArrayList<ColumnDefinition>()
-        val embeded = f.getAnnotation(Embedded::class.java)
-        if(embeded != null) {
-            if(override != null) {
-                throw RuntimeException("${f.toString()} is embedded and should not mark as Column")
-            }
-            list.addAll(allDefinitions(f.type, null))
-        } else {
-            val columnAnno = override?: f.getAnnotation(Column::class.java)
-            val name = columnAnno?.name ?: option.defaultColumnName(f)
-            val nullable = columnAnno?.nullable ?: !f.type.isPrimitive
-            val def = columnAnno?.columnDefinition ?: definitionFromType(f)
-            list.add(ColumnDefinition(name, nullable, def))
-        }
-        return list
-    }
+
     private fun definitionFromType(f: Field) :String {
         val clazz = f.type
         if(clazz == Int::class.java) {
